@@ -32,6 +32,7 @@ export const ComparisonModal: React.FC<ComparisonModalProps> = ({
   );
   const [comparisonData, setComparisonData] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Sync if initialDoc1Id changes
   useEffect(() => {
@@ -53,6 +54,7 @@ export const ComparisonModal: React.FC<ComparisonModalProps> = ({
 
     const fetchComparison = async () => {
       setIsLoading(true);
+      setErrorMessage(null);
       try {
         const res = await fetch('/api/documents/compare', {
           method: 'POST',
@@ -62,9 +64,12 @@ export const ComparisonModal: React.FC<ComparisonModalProps> = ({
         if (res.ok) {
           const data = await res.json();
           setComparisonData(data);
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          setErrorMessage(errData.error || 'Failed to compare the selected documents.');
         }
-      } catch (err) {
-        console.error('Error fetching comparison:', err);
+      } catch (err: any) {
+        setErrorMessage(err?.message || 'Network error encountered while comparing documents.');
       } finally {
         setIsLoading(false);
       }
@@ -146,6 +151,13 @@ export const ComparisonModal: React.FC<ComparisonModalProps> = ({
 
         {/* Modal Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {errorMessage && (
+            <div className="p-4 rounded-xl bg-[#FEF2F2] border border-[#FECACA] text-xs text-[#991B1B] flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-[#EF4444]" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
           {isLoading ? (
             <div className="p-12 text-center text-xs text-[#71717A]">
               <div className="w-6 h-6 border-2 border-[#18181B] border-t-transparent rounded-full animate-spin mx-auto mb-3" />

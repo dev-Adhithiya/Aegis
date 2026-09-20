@@ -98,12 +98,17 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-[#09090B]/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 font-sans select-none">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="upload-modal-title"
+      className="fixed inset-0 bg-[#09090B]/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 font-sans select-none"
+    >
       <div className="bg-[#FFFFFF] w-full max-w-lg rounded-lg shadow-xl flex flex-col overflow-hidden border border-[#E4E4E7]">
         {/* Header */}
         <div className="p-4 border-b border-[#E4E4E7] flex items-center justify-between bg-[#FAFAF9]">
           <div>
-            <h2 className="text-sm font-semibold text-[#09090B]">
+            <h2 id="upload-modal-title" className="text-sm font-semibold text-[#09090B]">
               Upload Legal Contract
             </h2>
             <p className="text-xs text-[#71717A]">
@@ -112,9 +117,10 @@ export const UploadModal: React.FC<UploadModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="text-[#71717A] hover:text-[#09090B] p-1 rounded hover:bg-[#E4E4E7]/50 transition-colors"
+            aria-label="Close upload dialog"
+            className="text-[#71717A] hover:text-[#09090B] p-1 rounded hover:bg-[#E4E4E7]/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#18181B]"
           >
-            <X className="w-4 h-4" />
+            <X className="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
 
@@ -122,12 +128,21 @@ export const UploadModal: React.FC<UploadModalProps> = ({
         <div className="p-5 space-y-5">
           {/* Drag & Drop Zone */}
           <div
+            tabIndex={0}
+            role="button"
+            aria-label="Click or drag and drop a file to upload legal contract"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                fileInputRef.current?.click();
+              }
+            }}
             onDragEnter={() => setDragActive(true)}
             onDragLeave={() => setDragActive(false)}
             onDragOver={e => e.preventDefault()}
             onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
-            className={`border border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
+            className={`border border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#18181B] ${
               dragActive
                 ? 'border-[#18181B] bg-[#F4F4F5]'
                 : 'border-[#E4E4E7] hover:border-[#A1A1AA] bg-[#FAFAF9]'

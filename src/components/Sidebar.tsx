@@ -47,13 +47,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
     <aside className="w-60 bg-[#0A0A0B] text-[#A1A1AA] flex flex-col h-screen border-r border-[#18181B] select-none shrink-0 font-sans z-20">
       {/* Brand Header with AEGIS Logo */}
       <div className="p-4 border-b border-[#18181B]">
-        <div
+        <button
           onClick={() => setCurrentView('landing')}
-          className="cursor-pointer"
+          className="cursor-pointer text-left w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3F3F46] rounded-lg"
           id="brand-header-link"
+          aria-label="Aegis Legal Intelligence Home"
         >
           <AegisLogo size={24} showText={true} theme="light" />
-        </div>
+        </button>
       </div>
 
       {/* Primary Action: + Upload Document */}
@@ -245,11 +246,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Bottom-Left Profile (Only Name/Email, Clicking Opens Settings Panel) */}
-      <div
+      <button
         id="btn-profile-settings"
         onClick={onOpenSettings}
-        className="p-3 border-t border-[#18181B] bg-[#0A0A0B] cursor-pointer hover:bg-[#18181B]/50 transition-colors flex items-center justify-between gap-2"
+        className="p-3 border-t border-[#18181B] bg-[#0A0A0B] cursor-pointer hover:bg-[#18181B]/50 transition-colors flex items-center justify-between gap-2 w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3F3F46]"
         title="Account & Security Settings"
+        aria-label="Account & Security Settings"
       >
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="w-7 h-7 rounded-xl bg-[#18181B] border border-[#27272A] flex items-center justify-center text-[#FFFFFF] text-xs shrink-0 font-medium">
@@ -257,16 +259,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
           <div className="leading-tight truncate">
             <div className="text-xs font-semibold text-[#E4E4E7] truncate">
-              {currentUser?.name || 'Adv. Adhithiya'}
+              {currentUser?.name || 'Legal Practitioner'}
             </div>
             <div className="text-[11px] text-[#71717A] truncate">
-              {currentUser?.email || 'askadhithiya@gmail.com'}
+              {currentUser?.email || 'Active Session'}
             </div>
           </div>
         </div>
 
-        <Settings className="w-4 h-4 text-[#71717A] shrink-0" />
-      </div>
+        <Settings className="w-4 h-4 text-[#71717A] shrink-0" aria-hidden="true" />
+      </button>
     </aside>
   );
 };

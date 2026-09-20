@@ -32,19 +32,26 @@ export const TopBar: React.FC<TopBarProps> = ({
           <button
             id="btn-matter-dropdown"
             onClick={() => setDropdownOpen(!dropdownOpen)}
-            className="flex items-center gap-2 text-xs sm:text-sm font-semibold text-[#09090B] hover:text-[#27272A] px-3 py-1.5 rounded-xl hover:bg-[#FAFAF9] border border-transparent hover:border-[#E4E4E7] transition-colors"
+            aria-expanded={dropdownOpen}
+            aria-haspopup="listbox"
+            aria-label={`Current contract: ${activeDocument.name}. Click to switch contract`}
+            className="flex items-center gap-2 text-xs sm:text-sm font-semibold text-[#09090B] hover:text-[#27272A] px-3 py-1.5 rounded-xl hover:bg-[#FAFAF9] border border-transparent hover:border-[#E4E4E7] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#18181B]"
             title="Switch Contract Matter"
           >
-            <FileText className="w-4 h-4 text-[#18181B] shrink-0" />
+            <FileText className="w-4 h-4 text-[#18181B] shrink-0" aria-hidden="true" />
             <span className="truncate max-w-[240px] sm:max-w-[380px]">
               {activeDocument.name}
             </span>
-            <ChevronDown className="w-3.5 h-3.5 text-[#71717A] shrink-0" />
+            <ChevronDown className="w-3.5 h-3.5 text-[#71717A] shrink-0" aria-hidden="true" />
           </button>
 
           {/* Document Switcher Dropdown */}
           {dropdownOpen && (
-            <div className="absolute top-full left-0 mt-1 w-80 bg-[#FFFFFF] border border-[#E4E4E7] rounded-2xl shadow-xl py-1 z-30 text-xs animate-in fade-in duration-100 overflow-hidden">
+            <div
+              role="listbox"
+              aria-label="Active Contracts"
+              className="absolute top-full left-0 mt-1 w-80 bg-[#FFFFFF] border border-[#E4E4E7] rounded-2xl shadow-xl py-1 z-30 text-xs animate-in fade-in duration-100 overflow-hidden"
+            >
               <div className="px-3.5 py-2 text-[10px] uppercase font-semibold text-[#71717A] border-b border-[#E4E4E7]">
                 Active Contracts
               </div>
@@ -52,11 +59,13 @@ export const TopBar: React.FC<TopBarProps> = ({
                 {documents.map(doc => (
                   <button
                     key={doc.id}
+                    role="option"
+                    aria-selected={doc.id === activeDocument.id}
                     onClick={() => {
                       onSelectDocument(doc.id);
                       setDropdownOpen(false);
                     }}
-                    className={`w-full text-left px-3 py-2 rounded-xl flex items-center justify-between hover:bg-[#FAFAF9] transition-colors ${
+                    className={`w-full text-left px-3 py-2 rounded-xl flex items-center justify-between hover:bg-[#FAFAF9] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#18181B] ${
                       doc.id === activeDocument.id
                         ? 'bg-[#F4F4F5] font-semibold text-[#09090B]'
                         : 'text-[#52525B]'

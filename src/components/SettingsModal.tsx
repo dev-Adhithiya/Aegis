@@ -186,7 +186,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <input
                   type="email"
                   disabled
-                  value={currentUser?.email || 'askadhithiya@gmail.com'}
+                  value={currentUser?.email || 'Active Account'}
                   className="w-full px-3 py-2 text-xs bg-[#F4F4F5] border border-[#E4E4E7] rounded-xl text-[#71717A] cursor-not-allowed"
                 />
                 <p className="text-[11px] text-[#71717A] mt-1">
@@ -203,7 +203,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Adv. Adhithiya"
+                  placeholder="e.g. Legal Counsel / Advocate"
                   className="w-full px-3 py-2 text-xs bg-[#FFFFFF] border border-[#E4E4E7] rounded-xl text-[#09090B] focus:outline-none focus:ring-2 focus:ring-[#18181B]/10 focus:border-[#18181B]"
                 />
               </div>

@@ -1,23 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, Suspense } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { LandingView } from './components/LandingView';
 import { DocumentViewer } from './components/DocumentViewer';
 import { StructuredEntityViewer } from './components/StructuredEntityViewer';
 import { RiskFlagsPanel } from './components/RiskFlagsPanel';
-import { ComparisonModal } from './components/ComparisonModal';
-import { ExportModal } from './components/ExportModal';
-import { GoogleDriveModal } from './components/GoogleDriveModal';
-import { UploadModal } from './components/UploadModal';
-import { LoginPage } from './components/LoginPage';
-import { LogoutPage } from './components/LogoutPage';
-import { CitationQAPage } from './components/CitationQAPage';
-import { PracticeFeedbackPage } from './components/PracticeFeedbackPage';
-import { VaultPage } from './components/VaultPage';
-import { CookieManagementModal } from './components/CookieManagementModal';
 import { CookieBanner } from './components/CookieBanner';
-import { SettingsModal } from './components/SettingsModal';
-import { WorkspaceView } from './components/WorkspaceView';
 import { initialVaultItems } from './data/initialVault';
 import {
   StructuredDocument,
@@ -28,6 +16,27 @@ import {
   Workspace,
 } from './types/legal';
 import { MessageSquare, FileText, AlertTriangle, ArrowRight, Briefcase } from 'lucide-react';
+
+// Code splitting / lazy-loaded modules for optimal performance & chunking
+const ComparisonModal = React.lazy(() => import('./components/ComparisonModal').then(m => ({ default: m.ComparisonModal })));
+const ExportModal = React.lazy(() => import('./components/ExportModal').then(m => ({ default: m.ExportModal })));
+const GoogleDriveModal = React.lazy(() => import('./components/GoogleDriveModal').then(m => ({ default: m.GoogleDriveModal })));
+const UploadModal = React.lazy(() => import('./components/UploadModal').then(m => ({ default: m.UploadModal })));
+const LoginPage = React.lazy(() => import('./components/LoginPage').then(m => ({ default: m.LoginPage })));
+const LogoutPage = React.lazy(() => import('./components/LogoutPage').then(m => ({ default: m.LogoutPage })));
+const CitationQAPage = React.lazy(() => import('./components/CitationQAPage').then(m => ({ default: m.CitationQAPage })));
+const PracticeFeedbackPage = React.lazy(() => import('./components/PracticeFeedbackPage').then(m => ({ default: m.PracticeFeedbackPage })));
+const VaultPage = React.lazy(() => import('./components/VaultPage').then(m => ({ default: m.VaultPage })));
+const CookieManagementModal = React.lazy(() => import('./components/CookieManagementModal').then(m => ({ default: m.CookieManagementModal })));
+const SettingsModal = React.lazy(() => import('./components/SettingsModal').then(m => ({ default: m.SettingsModal })));
+const WorkspaceView = React.lazy(() => import('./components/WorkspaceView').then(m => ({ default: m.WorkspaceView })));
+
+const ViewLoadingFallback: React.FC = () => (
+  <div className="flex-1 flex items-center justify-center p-12 text-[#71717A] text-xs">
+    <div className="w-5 h-5 border-2 border-[#18181B] border-t-transparent rounded-full animate-spin mr-2.5" />
+    <span>Loading view...</span>
+  </div>
+);
 
 export default function App() {
   const [documents, setDocuments] = useState<StructuredDocument[]>([]);
@@ -157,14 +166,17 @@ export default function App() {
     setCurrentView('login');
   };
 
-  const activeDocument = documents.find(d => d.id === activeDocumentId) || documents[0] || null;
+  const activeDocument = useMemo(
+    () => documents.find(d => d.id === activeDocumentId) || documents[0] || null,
+    [documents, activeDocumentId]
+  );
 
-  const handleSelectDocument = (docId: string) => {
+  const handleSelectDocument = useCallback((docId: string) => {
     setActiveDocumentId(docId);
     setTargetClauseId(null);
-  };
+  }, []);
 
-  const handleDocumentLoaded = (newDoc: StructuredDocument) => {
+  const handleDocumentLoaded = useCallback((newDoc: StructuredDocument) => {
     setDocuments(prev => {
       const exists = prev.find(d => d.id === newDoc.id);
       if (exists) {
@@ -176,9 +188,9 @@ export default function App() {
     setCurrentView('document');
     setDocTab('clauses');
     loadWorkspaces();
-  };
+  }, []);
 
-  const handleAddToVault = (item: Omit<VaultItem, 'id' | 'createdAt'>) => {
+  const handleAddToVault = useCallback((item: Omit<VaultItem, 'id' | 'createdAt'>) => {
     const newItem: VaultItem = {
       ...item,
       id: `vault-${Date.now()}`,
@@ -191,42 +203,52 @@ export default function App() {
       }),
     };
     setVaultItems(prev => [newItem, ...prev]);
-  };
+  }, []);
 
-  const handleDeleteVaultItem = (id: string) => {
+  const handleDeleteVaultItem = useCallback((id: string) => {
     setVaultItems(prev => prev.filter(item => item.id !== id));
-  };
+  }, []);
 
-  const handleOpenCompareWithDocs = (doc1Id: string, doc2Id: string) => {
+  const handleOpenCompareWithDocs = useCallback((doc1Id: string, doc2Id: string) => {
     setCompareDoc1Id(doc1Id);
     setCompareDoc2Id(doc2Id);
     setIsCompareOpen(true);
-  };
+  }, []);
 
   // If user is explicitly on login page
   if (currentView === 'login') {
-    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+    return (
+      <Suspense fallback={<ViewLoadingFallback />}>
+        <LoginPage onLoginSuccess={handleLoginSuccess} />
+      </Suspense>
+    );
   }
 
   // If user is on dedicated logout page
   if (currentView === 'logout') {
-    return <LogoutPage onRedirectToLogin={handleCompleteLogoutRedirect} />;
+    return (
+      <Suspense fallback={<ViewLoadingFallback />}>
+        <LogoutPage onRedirectToLogin={handleCompleteLogoutRedirect} />
+      </Suspense>
+    );
   }
 
   // If user is on dedicated Citation Q&A Practice page
   if (currentView === 'citation-qa' && activeDocument) {
     return (
-      <CitationQAPage
-        document={activeDocument}
-        documents={documents}
-        onBackToDocument={() => setCurrentView('document')}
-        onSelectDocument={handleSelectDocument}
-        onNavigateToFeedback={feedback => {
-          setLatestFeedback(feedback);
-          setCurrentView('practice-feedback');
-        }}
-        onAddToVault={handleAddToVault}
-      />
+      <Suspense fallback={<ViewLoadingFallback />}>
+        <CitationQAPage
+          document={activeDocument}
+          documents={documents}
+          onBackToDocument={() => setCurrentView('document')}
+          onSelectDocument={handleSelectDocument}
+          onNavigateToFeedback={feedback => {
+            setLatestFeedback(feedback);
+            setCurrentView('practice-feedback');
+          }}
+          onAddToVault={handleAddToVault}
+        />
+      </Suspense>
     );
   }
 
@@ -254,30 +276,34 @@ export default function App() {
     };
 
     return (
-      <PracticeFeedbackPage
-        feedback={fallbackFeedback}
-        document={activeDocument}
-        onBackToQA={() => setCurrentView('citation-qa')}
-        onBackToDocument={() => setCurrentView('document')}
-        onRestartPractice={() => setCurrentView('citation-qa')}
-        onAddToVault={handleAddToVault}
-      />
+      <Suspense fallback={<ViewLoadingFallback />}>
+        <PracticeFeedbackPage
+          feedback={fallbackFeedback}
+          document={activeDocument}
+          onBackToQA={() => setCurrentView('citation-qa')}
+          onBackToDocument={() => setCurrentView('document')}
+          onRestartPractice={() => setCurrentView('citation-qa')}
+          onAddToVault={handleAddToVault}
+        />
+      </Suspense>
     );
   }
 
   // If user is on dedicated Vault page
   if (currentView === 'vault') {
     return (
-      <VaultPage
-        vaultItems={vaultItems}
-        documents={documents}
-        onBackToMain={() => setCurrentView('document')}
-        onDeleteItem={handleDeleteVaultItem}
-        onSelectDocument={docId => {
-          handleSelectDocument(docId);
-          setCurrentView('document');
-        }}
-      />
+      <Suspense fallback={<ViewLoadingFallback />}>
+        <VaultPage
+          vaultItems={vaultItems}
+          documents={documents}
+          onBackToMain={() => setCurrentView('document')}
+          onDeleteItem={handleDeleteVaultItem}
+          onSelectDocument={docId => {
+            handleSelectDocument(docId);
+            setCurrentView('document');
+          }}
+        />
+      </Suspense>
     );
   }
 
@@ -302,18 +328,20 @@ export default function App() {
       {/* 2. Main Content Area */}
       <div className="flex-1 flex flex-col h-full overflow-hidden">
         {currentView === 'workspaces' ? (
-          <WorkspaceView
-            workspaces={workspaces}
-            activeWorkspaceId={activeWorkspaceId}
-            onSelectWorkspace={(wsId) => setActiveWorkspaceId(wsId)}
-            onCreateWorkspace={handleCreateWorkspace}
-            onSelectDocument={(docId) => {
-              handleSelectDocument(docId);
-              setCurrentView('document');
-            }}
-            onOpenCompareWithDocs={handleOpenCompareWithDocs}
-            availableDocuments={documents}
-          />
+          <Suspense fallback={<ViewLoadingFallback />}>
+            <WorkspaceView
+              workspaces={workspaces}
+              activeWorkspaceId={activeWorkspaceId}
+              onSelectWorkspace={(wsId) => setActiveWorkspaceId(wsId)}
+              onCreateWorkspace={handleCreateWorkspace}
+              onSelectDocument={(docId) => {
+                handleSelectDocument(docId);
+                setCurrentView('document');
+              }}
+              onOpenCompareWithDocs={handleOpenCompareWithDocs}
+              availableDocuments={documents}
+            />
+          </Suspense>
         ) : currentView === 'landing' ? (
           <LandingView
             documents={documents}
@@ -436,49 +464,63 @@ export default function App() {
       {/* Cookie Consent Banner (Dismissible) */}
       <CookieBanner onOpenPreferences={() => setIsCookiesOpen(true)} />
 
-      {/* Modals & Dialogs */}
-      <UploadModal
-        isOpen={isUploadOpen}
-        onClose={() => setIsUploadOpen(false)}
-        onDocumentLoaded={handleDocumentLoaded}
-      />
+      {/* Modals & Dialogs (Lazy-loaded chunks) */}
+      <Suspense fallback={null}>
+        {isUploadOpen && (
+          <UploadModal
+            isOpen={isUploadOpen}
+            onClose={() => setIsUploadOpen(false)}
+            onDocumentLoaded={handleDocumentLoaded}
+          />
+        )}
 
-      <GoogleDriveModal
-        isOpen={isDriveOpen}
-        onClose={() => setIsDriveOpen(false)}
-        onImportDocument={handleDocumentLoaded}
-      />
+        {isDriveOpen && (
+          <GoogleDriveModal
+            isOpen={isDriveOpen}
+            onClose={() => setIsDriveOpen(false)}
+            onImportDocument={handleDocumentLoaded}
+          />
+        )}
 
-      <ComparisonModal
-        isOpen={isCompareOpen}
-        onClose={() => {
-          setIsCompareOpen(false);
-          setCompareDoc1Id(undefined);
-          setCompareDoc2Id(undefined);
-        }}
-        documents={documents}
-        initialDoc1Id={compareDoc1Id || activeDocument?.id}
-        onSelectDocument={handleSelectDocument}
-      />
+        {isCompareOpen && (
+          <ComparisonModal
+            isOpen={isCompareOpen}
+            onClose={() => {
+              setIsCompareOpen(false);
+              setCompareDoc1Id(undefined);
+              setCompareDoc2Id(undefined);
+            }}
+            documents={documents}
+            initialDoc1Id={compareDoc1Id || activeDocument?.id}
+            onSelectDocument={handleSelectDocument}
+          />
+        )}
 
-      <ExportModal
-        isOpen={isExportOpen}
-        onClose={() => setIsExportOpen(false)}
-        document={activeDocument}
-      />
+        {isExportOpen && (
+          <ExportModal
+            isOpen={isExportOpen}
+            onClose={() => setIsExportOpen(false)}
+            document={activeDocument}
+          />
+        )}
 
-      <CookieManagementModal
-        isOpen={isCookiesOpen}
-        onClose={() => setIsCookiesOpen(false)}
-        onLogout={handleInitiateLogout}
-      />
+        {isCookiesOpen && (
+          <CookieManagementModal
+            isOpen={isCookiesOpen}
+            onClose={() => setIsCookiesOpen(false)}
+            onLogout={handleInitiateLogout}
+          />
+        )}
 
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        currentUser={currentUser}
-        onUserUpdated={setCurrentUser}
-      />
+        {isSettingsOpen && (
+          <SettingsModal
+            isOpen={isSettingsOpen}
+            onClose={() => setIsSettingsOpen(false)}
+            currentUser={currentUser}
+            onUserUpdated={setCurrentUser}
+          />
+        )}
+      </Suspense>
     </div>
   );
 }

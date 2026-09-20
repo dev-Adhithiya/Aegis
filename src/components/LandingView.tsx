@@ -29,6 +29,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isLoadingSample, setIsLoadingSample] = useState(false);
+  const [landingError, setLandingError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -56,6 +57,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
   };
 
   const handleProcessFile = async (file: File) => {
+    setLandingError(null);
     try {
       const text = await file.text();
       const res = await fetch('/api/documents/parse', {
@@ -75,14 +77,19 @@ export const LandingView: React.FC<LandingViewProps> = ({
         } else {
           onSelectDocument(doc.id);
         }
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        setLandingError(errData.error || 'Failed to process contract.');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error processing uploaded file:', err);
+      setLandingError(err?.message || 'Error uploading document.');
     }
   };
 
   const handleLoadSample = async () => {
     setIsLoadingSample(true);
+    setLandingError(null);
     try {
       const res = await fetch('/api/documents/load-sample/sample-lease-1', {
         method: 'POST',
@@ -94,9 +101,12 @@ export const LandingView: React.FC<LandingViewProps> = ({
         } else {
           onSelectDocument(doc.id);
         }
+      } else {
+        setLandingError('Unable to load sample lease.');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error loading sample agreement:', err);
+      setLandingError(err?.message || 'Connection error while loading sample.');
     } finally {
       setIsLoadingSample(false);
     }
@@ -116,13 +126,40 @@ export const LandingView: React.FC<LandingViewProps> = ({
           </p>
         </div>
 
+        {/* User-facing error message */}
+        {landingError && (
+          <div
+            role="alert"
+            className="w-full mb-4 p-3 rounded-lg bg-[#FEF2F2] border border-[#FECACA] text-xs text-[#991B1B] flex items-center justify-between"
+          >
+            <span>{landingError}</span>
+            <button
+              type="button"
+              onClick={() => setLandingError(null)}
+              aria-label="Dismiss alert"
+              className="text-[#991B1B] hover:text-[#7F1D1D] font-bold ml-2 px-1 focus-visible:outline-none"
+            >
+              ×
+            </button>
+          </div>
+        )}
+
         {/* Minimalist File Upload Zone */}
         <div
+          tabIndex={0}
+          role="button"
+          aria-label="Click or drop a file to parse contract"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              fileInputRef.current?.click();
+            }
+          }}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
-          className={`w-full p-8 sm:p-12 rounded-lg border text-center cursor-pointer transition-all duration-150 ${
+          className={`w-full p-8 sm:p-12 rounded-lg border text-center cursor-pointer transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#18181B] ${
             isDragging
               ? 'bg-[#F4F4F5] border-[#18181B]'
               : 'bg-[#FFFFFF] border-[#E4E4E7] hover:border-[#A1A1AA]'

@@ -42,13 +42,14 @@ import {
   updateUserProfile,
   logAndSanitizeError,
   UserSession,
+  APP_SESSION_SECRET,
 } from './src/services/security';
 
 dotenv.config();
 
 const app = express();
 const PORT = 3000;
-const SESSION_SECRET = process.env.SESSION_SECRET || 'aegis-enterprise-legal-statutory-cookie-secret-2026';
+const SESSION_SECRET = APP_SESSION_SECRET;
 
 // Request body size limits (max 10MB to match file upload validation)
 app.use(express.json({ limit: '10mb' }));
@@ -120,17 +121,20 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     }
   }
 
-  // Auto-attach default verified workspace account for seamless developer/testing experience
-  const defaultUser = findUserByEmail('askadhithiya@gmail.com');
-  if (defaultUser) {
-    const defaultSession = createSession(defaultUser);
-    req.user = defaultSession;
-    res.cookie('aegis_session', defaultSession.sessionId, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+  // If not explicitly signed out, auto-attach verified counsel session for seamless preview & iframe operations
+  const hasLoggedOut = req.cookies?.aegis_logged_out === '1';
+  if (!hasLoggedOut) {
+    const defaultUser = findUserByEmail('askadhithiya@gmail.com');
+    if (defaultUser) {
+      const defaultSession = createSession(defaultUser);
+      req.user = defaultSession;
+      res.cookie('aegis_session', defaultSession.sessionId, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      });
+    }
   }
 
   next();
@@ -202,47 +206,20 @@ function ensureDefaultDataSeeded() {
         fileFormat: sample.name.endsWith('.docx') ? 'docx' : 'pdf',
         fileSize: `${Math.round((sample.rawText.length / 1024) * 10) / 10} KB`,
         source: 'sample',
-        ownerId: 'usr-default-workspace-1',
+        ownerId: 'system',
         isEncrypted: true,
       };
 
       // Detect intra-document inconsistencies
       doc.inconsistencies = detectDocumentInconsistencies(doc);
 
-      // Workspace assignments
-      if (sample.id === 'doc-rental-1' || sample.id === 'sample-lease-addendum-1') {
-        doc.workspaceId = 'ws-bengaluru-tenancy';
-      } else if (sample.id === 'doc-nda-1') {
-        doc.workspaceId = 'ws-fintech-mna';
-      }
-
       const encryptedPayload = encryptDocumentText(sample.rawText);
       documentsStore.set(doc.id, {
         doc,
         encryptedRawText: encryptedPayload,
-        ownerId: 'usr-default-workspace-1',
+        ownerId: 'system',
       });
     }
-  }
-
-  if (workspacesStore.size === 0) {
-    workspacesStore.set('ws-bengaluru-tenancy', {
-      id: 'ws-bengaluru-tenancy',
-      name: 'Bengaluru Flat 402 Tenancy Matter',
-      description: 'Residential lease, supplementary addendum, and society bylaws for Flat 402, Indiranagar / Bellandur.',
-      createdAt: new Date(Date.now() - 3600000 * 24 * 3).toISOString(),
-      documentIds: ['doc-rental-1', 'sample-lease-addendum-1'],
-      ownerId: 'usr-default-workspace-1',
-    });
-
-    workspacesStore.set('ws-fintech-mna', {
-      id: 'ws-fintech-mna',
-      name: 'Stealth FinTech Partnership & IP Vault',
-      description: 'Mutual non-disclosure covenants, proprietary IP exclusions, and commercial trade secret governance.',
-      createdAt: new Date(Date.now() - 3600000 * 24 * 7).toISOString(),
-      documentIds: ['doc-nda-1'],
-      ownerId: 'usr-default-workspace-1',
-    });
   }
 }
 
@@ -303,6 +280,7 @@ app.post('/api/auth/login', (req: Request, res: Response) => {
   }
 
   const session = createSession(user);
+  res.clearCookie('aegis_logged_out');
   res.cookie('aegis_session', session.sessionId, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
@@ -351,6 +329,7 @@ app.post('/api/auth/register', (req: Request, res: Response) => {
     const user = createUserAccount(email, name, password);
     const session = createSession(user);
 
+    res.clearCookie('aegis_logged_out');
     res.cookie('aegis_session', session.sessionId, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -380,6 +359,12 @@ app.post('/api/auth/logout', (req: Request, res: Response) => {
   }
   res.clearCookie('aegis_session');
   res.clearCookie('aegis_csrf');
+  res.cookie('aegis_logged_out', '1', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 24 * 60 * 60 * 1000,
+  });
   res.json({ message: 'Signed out successfully.' });
 });
 
@@ -593,15 +578,29 @@ app.get('/api/documents', requireAuth, (req: Request, res: Response) => {
 // WORKSPACE (CASE / MATTER) ENDPOINTS
 // =========================================================================
 
-// List Workspaces
+// List Workspaces (Strictly scoped to current user)
 app.get('/api/workspaces', requireAuth, (req: Request, res: Response) => {
   ensureDefaultDataSeeded();
-  const list = Array.from(workspacesStore.values()).map(ws => {
-    // Count associated active documents
-    const docCount = ws.documentIds.length;
+  const currentUserId = req.user!.userId;
+  let userMatters = Array.from(workspacesStore.values()).filter(ws => ws.ownerId === currentUserId);
+
+  if (userMatters.length === 0) {
+    const starterWs: StoredWorkspace = {
+      id: `ws-${currentUserId.slice(0, 8)}-starter`,
+      name: 'Bengaluru Tenancy Review Matter',
+      description: 'Review of residential lease agreement and addendum under Karnataka Rent Control and Transfer of Property Act 1882.',
+      createdAt: new Date().toISOString(),
+      documentIds: ['doc-rental-1', 'sample-lease-addendum-1'],
+      ownerId: currentUserId,
+    };
+    workspacesStore.set(starterWs.id, starterWs);
+    userMatters = [starterWs];
+  }
+
+  const list = userMatters.map(ws => {
     return {
       ...ws,
-      documentCount: docCount,
+      documentCount: ws.documentIds.length,
     };
   });
   res.json(list);
@@ -627,7 +626,7 @@ app.post('/api/workspaces', requireAuth, (req: Request, res: Response) => {
     description: sanitizeUserInput(description, 500) || '',
     createdAt: new Date().toISOString(),
     documentIds: cleanDocIds,
-    ownerId: req.user?.userId || 'usr-default-workspace-1',
+    ownerId: req.user!.userId,
   };
 
   workspacesStore.set(wsId, newWorkspace);
@@ -635,7 +634,7 @@ app.post('/api/workspaces', requireAuth, (req: Request, res: Response) => {
   // Link documents
   for (const docId of cleanDocIds) {
     const rec = documentsStore.get(docId);
-    if (rec) {
+    if (rec && (rec.ownerId === req.user!.userId || rec.doc.source === 'sample')) {
       rec.doc.workspaceId = wsId;
     }
   }
@@ -652,9 +651,14 @@ app.get('/api/workspaces/:id', requireAuth, (req: Request, res: Response) => {
     return;
   }
 
+  if (ws.ownerId !== req.user!.userId) {
+    res.status(403).json({ error: 'Forbidden: You do not have access to this workspace matter.' });
+    return;
+  }
+
   const docsInWs: StructuredDocument[] = [];
   for (const docId of ws.documentIds) {
-    const doc = getAuthorizedDocument(docId, req.user?.userId || '');
+    const doc = getAuthorizedDocument(docId, req.user!.userId);
     if (doc) {
       docsInWs.push(doc);
     }
@@ -694,6 +698,11 @@ app.put('/api/workspaces/:id', requireAuth, (req: Request, res: Response) => {
     return;
   }
 
+  if (ws.ownerId !== req.user!.userId) {
+    res.status(403).json({ error: 'Forbidden: You do not have permission to modify this workspace matter.' });
+    return;
+  }
+
   const { name, description, documentIds } = req.body;
   if (name) ws.name = sanitizeUserInput(name, 120);
   if (description !== undefined) ws.description = sanitizeUserInput(description, 500);
@@ -721,6 +730,24 @@ app.put('/api/workspaces/:id', requireAuth, (req: Request, res: Response) => {
   res.json(ws);
 });
 
+// Delete Workspace
+app.delete('/api/workspaces/:id', requireAuth, (req: Request, res: Response) => {
+  ensureDefaultDataSeeded();
+  const ws = workspacesStore.get(req.params.id);
+  if (!ws) {
+    res.status(404).json({ error: 'Workspace matter not found.' });
+    return;
+  }
+
+  if (ws.ownerId !== req.user!.userId) {
+    res.status(403).json({ error: 'Forbidden: You do not have permission to delete this workspace matter.' });
+    return;
+  }
+
+  workspacesStore.delete(req.params.id);
+  res.json({ success: true, message: 'Workspace matter deleted.' });
+});
+
 // Add Document to Workspace
 app.post('/api/workspaces/:id/documents', requireAuth, (req: Request, res: Response) => {
   ensureDefaultDataSeeded();
@@ -730,9 +757,20 @@ app.post('/api/workspaces/:id/documents', requireAuth, (req: Request, res: Respo
     return;
   }
 
+  if (ws.ownerId !== req.user!.userId) {
+    res.status(403).json({ error: 'Forbidden: You do not have permission to update this workspace matter.' });
+    return;
+  }
+
   const { documentId } = req.body;
   if (!documentId) {
     res.status(400).json({ error: 'Document ID is required.' });
+    return;
+  }
+
+  const authorizedDoc = getAuthorizedDocument(documentId, req.user!.userId);
+  if (!authorizedDoc) {
+    res.status(404).json({ error: 'Document not found or access unauthorized.' });
     return;
   }
 
@@ -758,6 +796,11 @@ app.delete('/api/workspaces/:id/documents/:docId', requireAuth, (req: Request, r
     return;
   }
 
+  if (ws.ownerId !== req.user!.userId) {
+    res.status(403).json({ error: 'Forbidden: You do not have permission to update this workspace matter.' });
+    return;
+  }
+
   const docId = req.params.docId;
   ws.documentIds = ws.documentIds.filter(id => id !== docId);
   workspacesStore.set(ws.id, ws);
@@ -770,12 +813,39 @@ app.delete('/api/workspaces/:id/documents/:docId', requireAuth, (req: Request, r
   res.json({ success: true, workspace: ws });
 });
 
+// Delete Document (Owned by user)
+app.delete('/api/documents/:id', requireAuth, (req: Request, res: Response) => {
+  const docId = req.params.id;
+  const currentUserId = req.user!.userId;
+  const record = documentsStore.get(docId);
+  if (!record) {
+    res.status(404).json({ error: 'Document not found.' });
+    return;
+  }
+  if (record.ownerId !== currentUserId) {
+    res.status(403).json({ error: 'Forbidden: You do not have permission to delete this document.' });
+    return;
+  }
+  documentsStore.delete(docId);
+  for (const ws of workspacesStore.values()) {
+    if (ws.ownerId === currentUserId && ws.documentIds.includes(docId)) {
+      ws.documentIds = ws.documentIds.filter(id => id !== docId);
+    }
+  }
+  res.json({ success: true, message: 'Document deleted successfully.' });
+});
+
 // Workspace Scoped Q&A (Synthesized Across All Documents in Matter)
 app.post('/api/workspaces/:id/qa', requireAuth, async (req: Request, res: Response) => {
   ensureDefaultDataSeeded();
   const ws = workspacesStore.get(req.params.id);
   if (!ws) {
     res.status(404).json({ error: 'Workspace not found.' });
+    return;
+  }
+
+  if (ws.ownerId !== req.user!.userId) {
+    res.status(403).json({ error: 'Forbidden: You do not have access to this workspace matter.' });
     return;
   }
 
@@ -1595,8 +1665,9 @@ Return strict JSON:
   }
 });
 
-// Google Drive Files List (Simulation and Live Sync Helper)
-app.get('/api/drive/files', requireAuth, (req: Request, res: Response) => {
+// Cloud Storage / Google Drive Integration Endpoint
+app.get('/api/drive/files', (req: Request, res: Response) => {
+  ensureDefaultDataSeeded();
   res.json([
     {
       id: 'gdrive-file-1',
@@ -1625,18 +1696,27 @@ app.get('/api/drive/files', requireAuth, (req: Request, res: Response) => {
       docType: 'lease',
       rawText: ALL_SAMPLE_CONTRACTS[2].rawText,
     },
+    {
+      id: 'gdrive-file-4',
+      name: 'Residential_Tenancy_Addendum_Bengaluru.docx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      modifiedTime: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
+      size: '12 KB',
+      docType: 'lease',
+      rawText: ALL_SAMPLE_CONTRACTS[3].rawText,
+    },
   ]);
 });
 
 // Start Server and Mount Vite
 async function startServer() {
-  if (process.env.NODE_ENV !== 'production') {
+  if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);
-  } else {
+  } else if (!process.env.VERCEL) {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
@@ -1644,9 +1724,15 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Aegis Legal Intelligence backend running on http://0.0.0.0:${PORT}`);
-  });
+  if (!process.env.VERCEL) {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Aegis Legal Intelligence backend running on http://0.0.0.0:${PORT}`);
+    });
+  }
 }
 
-startServer();
+export default app;
+
+if (!process.env.VERCEL) {
+  startServer();
+}

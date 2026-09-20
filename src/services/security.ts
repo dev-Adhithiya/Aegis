@@ -4,10 +4,18 @@ import path from 'path';
 // ==========================================
 // 1. DATA ENCRYPTION AT REST (AES-256-GCM)
 // ==========================================
+export const APP_SESSION_SECRET =
+  process.env.SESSION_SECRET ||
+  (process.env.NODE_ENV === 'production'
+    ? crypto.randomBytes(32).toString('hex')
+    : 'aegis-dev-session-secret-preview-2026');
+
 const ENCRYPTION_SECRET =
   process.env.DATA_ENCRYPTION_KEY ||
-  process.env.SESSION_SECRET ||
-  'aegis-enterprise-legal-statutory-sec-2026-bangalore-mumbai';
+  APP_SESSION_SECRET ||
+  (process.env.NODE_ENV === 'production'
+    ? crypto.randomBytes(32).toString('hex')
+    : 'aegis-dev-encryption-key-32b');
 
 // Derive 32-byte key from secret
 const CIPHER_KEY = crypto.scryptSync(ENCRYPTION_SECRET, 'aegis_salt_legal_data_2026', 32);
@@ -228,9 +236,12 @@ export function sanitizeUserInput(input: unknown, maxLength = 2000): string {
   if (typeof input !== 'string') {
     return '';
   }
-  // Strip null bytes, trim, truncate
+  // Strip null bytes, neutralize dangerous script tag sequences, trim, and truncate
   return input
     .replace(/\0/g, '')
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/javascript\s*:/gi, '')
+    .replace(/on\w+\s*=/gi, '')
     .trim()
     .slice(0, maxLength);
 }
@@ -328,19 +339,21 @@ export function verifyPassword(password: string, hash: string, salt: string): bo
   return crypto.timingSafeEqual(Buffer.from(computed), Buffer.from(hash));
 }
 
-// Seed default authenticated workspace account
-const defaultSalt = 'aegis_workspace_salt_2026';
-const defaultHash = hashPassword('aegis1234', defaultSalt).hash;
-const defaultUser: UserAccount = {
-  id: 'usr-default-workspace-1',
-  email: 'askadhithiya@gmail.com',
-  name: 'Adv. Adhithiya (In-House Counsel)',
-  role: 'counsel',
-  passwordHash: defaultHash,
-  salt: defaultSalt,
-  createdAt: new Date().toISOString(),
-};
-usersStore.set(defaultUser.email.toLowerCase(), defaultUser);
+// Initialize counsel user account (supports environment overrides or defaults for preview)
+const defaultCounselEmail = (process.env.INITIAL_USER_EMAIL || 'askadhithiya@gmail.com').toLowerCase().trim();
+if (!usersStore.has(defaultCounselEmail)) {
+  const { hash, salt } = hashPassword(process.env.INITIAL_USER_PASSWORD || 'aegis1234');
+  const counselUser: UserAccount = {
+    id: 'usr-default-workspace-1',
+    email: defaultCounselEmail,
+    name: process.env.INITIAL_USER_NAME || 'Adv. Adhithiya (In-House Counsel)',
+    role: 'counsel',
+    passwordHash: hash,
+    salt,
+    createdAt: new Date().toISOString(),
+  };
+  usersStore.set(defaultCounselEmail, counselUser);
+}
 
 export function findUserByEmail(email: string): UserAccount | undefined {
   return usersStore.get(email.toLowerCase().trim());
@@ -352,8 +365,7 @@ export function updateUserPassword(email: string, oldPassword: string, newPasswo
     throw new Error('User account not found.');
   }
 
-  // If oldPassword is provided, verify it (unless default master account)
-  if (oldPassword && !verifyPassword(oldPassword, user.passwordHash, user.salt)) {
+  if (!oldPassword || !verifyPassword(oldPassword, user.passwordHash, user.salt)) {
     throw new Error('Current password is incorrect.');
   }
 
