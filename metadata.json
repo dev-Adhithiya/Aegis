@@ -1,0 +1,6 @@
+{
+  "name": "Aegis Legal Document Assistant",
+  "description": "Aegis AI legal document assistant for parsing, comparing, and risk-flagging Indian rental agreements and NDAs with cited references.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
